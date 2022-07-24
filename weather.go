@@ -11,6 +11,7 @@ import (
 	"math/rand"
 	"net/http"
 	"strings"
+	"time"
 )
 
 // generate random data for line chart
@@ -146,4 +147,47 @@ func main() {
 	//	fmt.Println("------ AirTempSet1 ------------")
 	//	fmt.Println(timeSeries.STATION[0].Observations["metar_set_1"])
 
+	str := "2022-07-24T12:15:00-0700"
+	//str = strings.ReplaceAll(str, "-0700", "0700")
+	fmt.Println("String: " + str)
+	layout := time.RFC3339
+	layout = "2006-01-02T15:04:05-0700"
+	fmt.Println("Layout: " + layout)
+	t, err := time.Parse(layout, str)
+
+	if err != nil {
+		fmt.Println(err)
+	}
+	fmt.Println(t)
+
+	timesToTemps := getTimesToTemps(timeSeries.STATION[0].Observations)
+
+	for k := range timesToTemps {
+		fmt.Print(k)
+		fmt.Print(" = ")
+		fmt.Println(timesToTemps[k])
+	}
+
+}
+
+/**
+ * Process the Observations Map provided and return a Map of temperature
+ * reading time to temperature reading in degrees fahrenheit.
+ */
+func getTimesToTemps(observation Observation) map[time.Time]float32 {
+
+	result := make(map[time.Time]float32)
+
+	airTemp := observation.AirTempSet1
+	times := observation.DateTime
+
+	for i, t := range times {
+		mTime, err := time.Parse("2006-01-02T15:04:05-0700", t)
+		if err != nil {
+			fmt.Println(err)
+		}
+		result[mTime] = airTemp[i]
+	}
+
+	return result
 }
