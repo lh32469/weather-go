@@ -10,6 +10,7 @@ import (
 	"log"
 	"math/rand"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 )
@@ -28,7 +29,10 @@ func httpserver(w http.ResponseWriter, _ *http.Request) {
 	line := charts.NewLine()
 	// set some global options like Title/Legend/ToolTip or anything else
 	line.SetGlobalOptions(
-		charts.WithInitializationOpts(opts.Initialization{Theme: types.ThemeWesteros}),
+		charts.WithInitializationOpts(opts.Initialization{
+			Theme:  types.ThemeMacarons,
+			Width:  "1200px",
+			Height: "800px"}),
 		charts.WithTitleOpts(opts.Title{
 			Title:    "Line example in Westeros theme",
 			Subtitle: "Line chart rendered by the http server this time",
@@ -42,7 +46,84 @@ func httpserver(w http.ResponseWriter, _ *http.Request) {
 	line.Render(w)
 }
 
-func main2() {
+func httpserver2(w http.ResponseWriter, _ *http.Request) {
+
+	timesToTemps := getTimesToTemps(getObservation("e5093"))
+
+	keys := make([]time.Time, 0, len(timesToTemps))
+
+	for fullTime, _ := range timesToTemps {
+		keys = append(keys, fullTime)
+	}
+
+	sort.Slice(keys, func(i, j int) bool {
+		return keys[i].Before(keys[j])
+	})
+
+	// create a new line instance
+	chart := charts.NewLine()
+
+	chart.Y = "Temperature"
+	// set some global options like Title/Legend/ToolTip or anything else
+	chart.SetGlobalOptions(
+		charts.WithXAxisOpts(
+			opts.XAxis{
+				AxisLabel: getXAxisLabel2(),
+			},
+		),
+		charts.WithInitializationOpts(
+			opts.Initialization{
+				Theme:     types.ThemeWesteros,
+				PageTitle: "WeatherGraphApp",
+				Width:     "auto",
+				Height:    "800px"},
+		),
+		charts.WithTitleOpts(
+			opts.Title{
+				Title:    "WeatherGraphApp",
+				Subtitle: "Current and 24 hr previous temperature graphs",
+			},
+		),
+	)
+
+	// Put data into instance
+	chart.SetXAxis(keys).
+		AddSeries("Current", generateTemperatureLineItems(timesToTemps)).
+		SetSeriesOptions(charts.WithLineChartOpts(opts.LineChart{Smooth: true}))
+
+	err := chart.Render(w)
+	if err != nil {
+		panic(err)
+	}
+}
+
+func getXAxisLabel() *opts.AxisLabel {
+	return &opts.AxisLabel{
+		ShowMinLabel: true,
+		Formatter:    "{value} kg",
+	}
+}
+
+func getXAxisLabel2() *opts.AxisLabel {
+	return &opts.AxisLabel{
+		ShowMinLabel: true,
+		Formatter:    opts.FuncOpts(dateFormatter),
+	}
+}
+
+var dateFormatter = `
+function (value, index) {
+    var parsed = Date.parse(value);
+	console.log(index + value + parsed);
+    var date = new Date(parsed);
+	console.log('parsed date ' + date);
+	var text = (date.getMonth() + 1) + '/' + (date.getDate()) 
+		+ ' ' + (date.getHours() + 1) + ':' + (date.getMinutes() + 1);
+	return text;
+}
+`
+
+func main3() {
 	port := "10002"
 	http.HandleFunc("/", httpserver)
 	log.Printf("Running at port: " + port)
@@ -58,31 +139,63 @@ func main2() {
 	http.ListenAndServe(":"+port, nil)
 }
 
-type TimeSeries struct {
-	QC_SUMMARY map[string]string
-	STATION    []Station
-	//STATION []map[string]string
-	SUMMARY map[string]string
-	UNITS   map[string]string
-}
-
-type Observation struct {
-	AirTempSet1 []float32 `json:"air_temp_set_1"`
-	DateTime    []string  `json:"date_time"`
-}
-
-type Station struct {
-	County       string
-	Observations Observation `json:"OBSERVATIONS"`
-	//Observations []Observation `json:"OBSERVATIONS"`
-	//Observations map[string][]string
-}
-
-var fiveMinuteTemplate = "https://api.mesowest.net/v2/stations/timeseries?stid=STATION&recent=4320&obtimezone=local&complete=1&hfmetars=1&token=d8c6aee36a994f90857925cea26934be"
-
 func main() {
+	port := "10002"
+	http.HandleFunc("/", httpserver2)
+	log.Printf("Running at port: " + port)
 
-	var url = strings.ReplaceAll(fiveMinuteTemplate, "STATION", "kpdx")
+	http.ListenAndServe(":"+port, nil)
+}
+
+func main1() {
+
+	timesToTemps := getTimesToTemps(getObservation("e5093"))
+
+	// Sort the Time keys
+	times := make([]time.Time, 0)
+	for k, _ := range timesToTemps {
+		times = append(times, k)
+	}
+
+	sort.Slice(times, func(i, j int) bool {
+		return times[i].Before(times[j])
+	})
+
+	for _, k := range times {
+		fmt.Print(k)
+		fmt.Print(" = ")
+		fmt.Println(timesToTemps[k])
+	}
+
+}
+
+func generateTemperatureLineItems(data map[time.Time]float32) []opts.LineData {
+
+	items := make([]opts.LineData, 0)
+
+	// Sort the Time keys
+	times := make([]time.Time, 0)
+	for k, _ := range data {
+		times = append(times, k)
+	}
+
+	sort.Slice(times, func(i, j int) bool {
+		return times[i].Before(times[j])
+	})
+
+	for _, k := range times {
+		fmt.Print(k)
+		fmt.Print(" = ")
+		fmt.Println(data[k])
+		items = append(items, opts.LineData{Value: data[k]})
+	}
+
+	return items
+}
+
+func getObservation(station string) Observation {
+
+	var url = strings.ReplaceAll(fiveMinuteTemplate, "STATION", station)
 	fmt.Println(url)
 
 	res, err := http.Get(url)
@@ -96,78 +209,10 @@ func main() {
 		panic(err)
 	}
 
-	//fmt.Println(body)
-
-	//var foo map[string]string
-	var foo = map[string]map[string]string{}
-	err = json.Unmarshal(body, &foo)
-
-	fmt.Println("------ Foo ------------")
-	fmt.Println(foo)
-
-	for k := range foo {
-		fmt.Println("Key: " + k)
-		fmt.Println(foo[k])
-	}
-
-	fmt.Println("------Foo UNITS ------------")
-	fmt.Println(foo["STATION"])
-
 	var timeSeries TimeSeries
 	err = json.Unmarshal(body, &timeSeries)
 
-	//fmt.Println("-------- TimeSeries ----------")
-	//fmt.Println(timeSeries)
-
-	fmt.Println("------ UNITS ------------")
-	fmt.Println(timeSeries.UNITS)
-
-	//fmt.Println("------ Stations ------------")
-	//fmt.Println(timeSeries.STATION)
-
-	//for k := range timeSeries.STATION {
-	//	fmt.Println(k)
-	//	fmt.Println(timeSeries.STATION[k])
-	//}
-
-	//fmt.Println("------ Station ------------")
-	//fmt.Println(timeSeries.STATION[0])
-
-	fmt.Println("------ Observations ------------")
-	fmt.Println(timeSeries.STATION[0].Observations)
-
-	fmt.Println("------ Observations AirTempSet1 ------------")
-	fmt.Println(timeSeries.STATION[0].Observations.AirTempSet1)
-
-	//	for k := range timeSeries.STATION[0].Observations {
-	//		fmt.Println(k)
-	//		//fmt.Println(timeSeries.STATION[0].Observations[k])
-	//	}
-	//
-	//	fmt.Println("------ AirTempSet1 ------------")
-	//	fmt.Println(timeSeries.STATION[0].Observations["metar_set_1"])
-
-	str := "2022-07-24T12:15:00-0700"
-	//str = strings.ReplaceAll(str, "-0700", "0700")
-	fmt.Println("String: " + str)
-	layout := time.RFC3339
-	layout = "2006-01-02T15:04:05-0700"
-	fmt.Println("Layout: " + layout)
-	t, err := time.Parse(layout, str)
-
-	if err != nil {
-		fmt.Println(err)
-	}
-	fmt.Println(t)
-
-	timesToTemps := getTimesToTemps(timeSeries.STATION[0].Observations)
-
-	for k := range timesToTemps {
-		fmt.Print(k)
-		fmt.Print(" = ")
-		fmt.Println(timesToTemps[k])
-	}
-
+	return timeSeries.STATION[0].Observations
 }
 
 /**
@@ -186,7 +231,7 @@ func getTimesToTemps(observation Observation) map[time.Time]float32 {
 		if err != nil {
 			fmt.Println(err)
 		}
-		result[mTime] = airTemp[i]
+		result[mTime] = airTemp[i]*9/5 + 32
 	}
 
 	return result
